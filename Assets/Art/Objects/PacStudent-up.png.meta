@@ -118,12 +118,12 @@ TextureImporter:
       name: PacStudent-up_0
       rect:
         serializedVersion: 2
-        x: 4
+        x: 0
         y: 160
-        width: 23
-        height: 31
+        width: 32
+        height: 32
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -140,12 +140,12 @@ TextureImporter:
       name: PacStudent-up_1
       rect:
         serializedVersion: 2
-        x: 4
-        y: 127
-        width: 23
+        x: 0
+        y: 128
+        width: 32
         height: 32
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -162,12 +162,12 @@ TextureImporter:
       name: PacStudent-up_2
       rect:
         serializedVersion: 2
-        x: 4
+        x: 0
         y: 96
-        width: 23
-        height: 31
+        width: 32
+        height: 32
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -184,12 +184,12 @@ TextureImporter:
       name: PacStudent-up_3
       rect:
         serializedVersion: 2
-        x: 4
+        x: 0
         y: 64
-        width: 23
-        height: 31
+        width: 32
+        height: 32
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -206,12 +206,12 @@ TextureImporter:
       name: PacStudent-up_4
       rect:
         serializedVersion: 2
-        x: 4
-        y: 31
-        width: 23
+        x: 0
+        y: 32
+        width: 32
         height: 32
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -228,12 +228,12 @@ TextureImporter:
       name: PacStudent-up_5
       rect:
         serializedVersion: 2
-        x: 4
+        x: 0
         y: 0
-        width: 23
-        height: 31
+        width: 32
+        height: 32
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -250,7 +250,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 
+    spriteID: 68975310dbbec42ebbe786e7b98ef4c1
     internalID: 0
     vertices: []
     indices: 
@@ -258,7 +258,9 @@ TextureImporter:
     weights: []
     secondaryTextures: []
     spriteCustomMetadata:
-      entries: []
+      entries:
+      - key: SpriteEditor.SliceSettings
+        value: '{"sliceOnImport":false,"gridCellCount":{"x":1.0,"y":1.0},"gridSpriteSize":{"x":32.0,"y":32.0},"gridSpriteOffset":{"x":0.0,"y":0.0},"gridSpritePadding":{"x":0.0,"y":0.0},"pivot":{"x":0.5,"y":0.5},"pivotPixels":{"x":0.0,"y":0.0},"autoSlicingMethod":0,"spriteAlignment":0,"pivotUnitMode":0,"slicingType":1,"keepEmptyRects":false,"isAlternate":false}'
     nameFileIdTable:
       PacStudent-up_0: -6790182957680143565
       PacStudent-up_1: 4822695809114277149
