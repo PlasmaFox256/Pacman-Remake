@@ -88,6 +88,45 @@ public sealed class LevelGenerator : MonoBehaviour
             && levelMap[position.y, position.x] == Empty;
     }
 
+    public bool TryGetTunnelExit(Vector2Int position, Vector2Int direction, out Vector2Int exit)
+    {
+        exit = position;
+        if (direction != Vector2Int.left && direction != Vector2Int.right)
+            return false;
+        if (!IsWalkable(position))
+            return false;
+
+        // Ignore unpainted padding in the Tilemap bounds. Tunnel mouths are
+        // the empty edge cells enclosed by walls above and below on both sides.
+        int left = 0;
+        int right = levelMap.GetLength(1) - 1;
+        while (left < right && !tilemap.HasTile(ToCell(new Vector2Int(left, position.y)))) left++;
+        while (right > left && !tilemap.HasTile(ToCell(new Vector2Int(right, position.y)))) right--;
+        if (right - left < 2)
+            return false;
+
+        Vector2Int leftMouth = new Vector2Int(left, position.y);
+        Vector2Int rightMouth = new Vector2Int(right, position.y);
+        if (!IsTunnelMouth(leftMouth, Vector2Int.right)
+            || !IsTunnelMouth(rightMouth, Vector2Int.left))
+            return false;
+
+        if (position == leftMouth && direction == Vector2Int.left)
+            exit = rightMouth;
+        else if (position == rightMouth && direction == Vector2Int.right)
+            exit = leftMouth;
+        else
+            return false;
+        return true;
+    }
+
+    private bool IsTunnelMouth(Vector2Int position, Vector2Int inward)
+    {
+        return IsWalkable(position) && IsWalkable(position + inward)
+            && !IsWalkable(position + Vector2Int.up)
+            && !IsWalkable(position + Vector2Int.down);
+    }
+
     private Vector3Int ToCell(Vector2Int position)
     {
         return new Vector3Int(bounds.xMin + position.x, bounds.yMax - 1 - position.y, bounds.zMin);

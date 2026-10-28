@@ -157,6 +157,11 @@ public sealed class PacStudentController : MonoBehaviour
             gridPosition = targetGridPosition;
             isLerping = false;
             deltaTime -= timeToTarget;
+
+            // Teleport only after reaching the mouth, never lerp across the maze.
+            // Begin the inward step before applying any buffered turn.
+            if (TryTeleportTunnel(currentInput))
+                TryStartMove(currentInput);
         }
     }
 
@@ -166,6 +171,7 @@ public sealed class PacStudentController : MonoBehaviour
         if (direction == Vector2Int.zero)
             return false;
 
+        TryTeleportTunnel(input);
         Vector2Int next = gridPosition + direction;
         if (!levelGenerator.IsWalkable(next))
             return false;
@@ -186,6 +192,23 @@ public sealed class PacStudentController : MonoBehaviour
         }
         wallCollisionPlayed = false;
         SetMoving(true);
+        return true;
+    }
+
+    private bool TryTeleportTunnel(Key input)
+    {
+        if (!levelGenerator.TryGetTunnelExit(gridPosition, InputDirection(input), out Vector2Int exit))
+            return false;
+
+        gridPosition = exit;
+        targetGridPosition = exit;
+        transform.position = GridToWorld(exit);
+        lerpStart = transform.position;
+        lerpTarget = transform.position;
+        lerpProgress = 0f;
+        isLerping = false;
+        wallCollisionPlayed = false;
+        Physics2D.SyncTransforms();
         return true;
     }
 
