@@ -15,6 +15,8 @@ public sealed class PacStudentController : MonoBehaviour
     [SerializeField] private AudioClip movingClip;
     [SerializeField] private AudioClip collideClip;
     [SerializeField] private ParticleSystem dustParticles;
+    [SerializeField] private AnimationClip deathAnimation;
+    [SerializeField] private GameSession gameSession;
 
     private Key lastInput = Key.None;
     private Key currentInput = Key.None;
@@ -30,10 +32,17 @@ public sealed class PacStudentController : MonoBehaviour
     private bool wallCollisionPlayed;
     private CircleCollider2D playerCollider;
     private readonly RaycastHit2D[] wallHits = new RaycastHit2D[32];
+    private Vector2Int spawnGridPosition;
+    private Vector3 spawnScale;
+    public bool IsDying { get; private set; }
+
+    private static readonly System.Collections.Generic.IComparer<RaycastHit2D> HitDistanceComparer =
+        System.Collections.Generic.Comparer<RaycastHit2D>.Create((a, b) => a.distance.CompareTo(b.distance));
 
     private void Awake()
     {
         animator = GetComponent<Animator>();
+        spawnScale = transform.localScale;
         // Physics only detects contacts. All movement and response use our lerp.
         GetComponent<Rigidbody2D>().bodyType = RigidbodyType2D.Kinematic;
         playerCollider = GetComponent<CircleCollider2D>();
@@ -78,6 +87,8 @@ public sealed class PacStudentController : MonoBehaviour
         }
 
         transform.position = GridToWorld(gridPosition);
+        spawnGridPosition = gridPosition;
+        if (gameSession == null) gameSession = FindAnyObjectByType<GameSession>();
         SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
         if (spriteRenderer != null && rightFacingSprite != null)
         {
@@ -98,6 +109,8 @@ public sealed class PacStudentController : MonoBehaviour
 
     private void Update()
     {
+        if (IsDying)
+            return;
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
@@ -119,6 +132,8 @@ public sealed class PacStudentController : MonoBehaviour
 
     private void AdvanceMovement(float deltaTime)
     {
+        if (IsDying)
+            return;
         if (moveSpeed <= 0f)
         {
             SetMoving(false);
@@ -254,14 +269,105 @@ public sealed class PacStudentController : MonoBehaviour
             StopAtWall(hit.point);
             return false;
         }
+        if (delta.sqrMagnitude > 0f && !SweepInteractions(delta.normalized, delta.magnitude))
+            return false;
         transform.position = position;
         return true;
     }
 
+    private bool SweepInteractions(Vector2 direction, float distance)
+    {
+        // Trigger callbacks run on physics ticks. Also sweep each lerp segment
+        // so a slow rendered frame cannot skip a pellet or a ghost.
+        Physics2D.SyncTransforms();
+        int count = playerCollider.Cast(direction, ContactFilter2D.noFilter, wallHits, distance);
+        System.Array.Sort(wallHits, 0, count, HitDistanceComparer);
+        for (int i = 0; i < count; i++)
+        {
+            Collider2D other = wallHits[i].collider;
+            if (other == null || !other.gameObject.activeInHierarchy)
+                continue;
+            GhostController ghost = other.GetComponentInParent<GhostController>();
+            if (ghost != null && ghost.State == GhostState.Normal)
+            {
+                // Keep the death effect at the contact, rather than the last cell.
+                Vector2 contactPosition = wallHits[i].centroid;
+                transform.position = new Vector3(contactPosition.x, contactPosition.y, transform.position.z);
+            }
+            HandleInteraction(other);
+            if (IsDying)
+                return false;
+        }
+        return true;
+    }
+
+    private void HandleInteraction(Collider2D other)
+    {
+        if (gameSession == null || IsDying)
+            return;
+        Collectible collectible = other.GetComponentInParent<Collectible>();
+        if (collectible != null) collectible.TryCollect(gameSession);
+        GhostController ghost = other.GetComponentInParent<GhostController>();
+        if (ghost != null) gameSession.HandleGhostCollision(ghost);
+    }
+
     private void OnTriggerEnter2D(Collider2D other)
     {
+        if (!enabled || IsDying)
+            return;
         if (enabled && levelGenerator != null && levelGenerator.IsWallCollider(other))
             StopAtWall(other.ClosestPoint(transform.position));
+        else
+            HandleInteraction(other);
+    }
+
+    private void OnTriggerStay2D(Collider2D other)
+    {
+        // A ghost that becomes Normal while overlapping must become dangerous.
+        if (enabled && !IsDying && other.GetComponentInParent<GhostController>() != null)
+            HandleInteraction(other);
+    }
+
+    public void BeginDeath(float duration)
+    {
+        IsDying = true;
+        isLerping = false;
+        lastInput = currentInput = Key.None;
+        SetMoving(false);
+        playerCollider.enabled = false;
+        if (collisionAudio != null) collisionAudio.Stop();
+        SpawnDustBurst(transform.position, 24, "Death Dust", true);
+        if (animator != null && deathAnimation != null)
+        {
+            animator.speed = deathAnimation.length / Mathf.Max(0.01f, duration);
+            animator.Play("Death", 0, 0f);
+            animator.Update(0f);
+        }
+    }
+
+    public void Respawn()
+    {
+        gridPosition = targetGridPosition = spawnGridPosition;
+        transform.position = GridToWorld(gridPosition);
+        transform.localScale = spawnScale;
+        transform.rotation = Quaternion.identity;
+        lerpStart = lerpTarget = transform.position;
+        lerpProgress = 0f;
+        isLerping = false;
+        lastInput = currentInput = Key.None;
+        wallCollisionPlayed = false;
+        if (animator != null)
+        {
+            animator.speed = 1f;
+            animator.Play("WalkRight", 0, 0f);
+            animator.Update(0f);
+            animator.speed = 0f;
+        }
+        // Death animates the scale; explicitly restore it after sampling the animator.
+        transform.localScale = spawnScale;
+        IsDying = false;
+        playerCollider.enabled = true;
+        Physics2D.SyncTransforms();
     }
 
     private void StopAtWall(Vector2 contactPoint)
@@ -281,22 +387,35 @@ public sealed class PacStudentController : MonoBehaviour
         wallCollisionPlayed = true;
         if (collisionAudio != null && collideClip != null)
             collisionAudio.PlayOneShot(collideClip);
+        Vector3 position = new Vector3(contactPoint.x, contactPoint.y, transform.position.z);
+        SpawnDustBurst(position, 8, "Wall Collision Dust");
+    }
+
+    private void SpawnDustBurst(Vector3 position, int count, string effectName, bool radial = false)
+    {
         if (dustParticles == null)
             return;
-
-        // Reuse the existing small dust effect, independently of running dust.
-        Vector3 position = new Vector3(contactPoint.x, contactPoint.y, transform.position.z);
+        // Keep each burst at its contact/death spot after the player moves away.
         ParticleSystem puff = Instantiate(dustParticles, position, Quaternion.identity);
-        puff.name = "Wall Collision Dust";
+        puff.name = effectName;
         puff.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = puff.main;
         main.loop = false;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
         main.stopAction = ParticleSystemStopAction.Destroy;
+        main.maxParticles = Mathf.Max(main.maxParticles, count);
+        if (radial)
+        {
+            ParticleSystem.ShapeModule shape = puff.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Circle;
+            shape.radius = 0.35f;
+            main.startSpeed = 0.8f;
+        }
         ParticleSystem.EmissionModule emission = puff.emission;
         emission.enabled = false;
         puff.Play();
-        puff.Emit(8);
+        puff.Emit(count);
     }
 
     private void SetMoving(bool moving)

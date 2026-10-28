@@ -142,6 +142,8 @@ MonoBehaviour:
   movingClip: {fileID: 8300000, guid: 2cd5a416050174e4d9d4f4f32612e40b, type: 3}
   collideClip: {fileID: 8300000, guid: 1af8aae8be3d54bab8f32492b288d690, type: 3}
   dustParticles: {fileID: 3104740793448675371}
+  deathAnimation: {fileID: 7400000, guid: 39c1c770fe6c1422786bfc42a1ae4a39, type: 2}
+  gameSession: {fileID: 0}
 --- !u!82 &4551097796833074378
 AudioSource:
   m_ObjectHideFlags: 0
