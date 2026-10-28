@@ -9,6 +9,10 @@ public sealed class PacStudentController : MonoBehaviour
     [SerializeField] private TileBase emptyTile;
     [SerializeField] private TileBase ghostWallTile;
     [SerializeField] private Sprite rightFacingSprite;
+    [SerializeField] private AudioSource movementAudio;
+    [SerializeField] private AudioSource collisionAudio;
+    [SerializeField] private AudioClip movingClip;
+    [SerializeField] private AudioClip collideClip;
 
     private Key lastInput = Key.None;
     private Key currentInput = Key.None;
@@ -19,6 +23,26 @@ public sealed class PacStudentController : MonoBehaviour
     private Vector3 lerpTarget;
     private float lerpProgress;
     private bool isLerping;
+    private Animator animator;
+    private bool isMoving;
+    private bool wallCollisionPlayed;
+
+    private void Awake()
+    {
+        animator = GetComponent<Animator>();
+        if (movementAudio != null)
+        {
+            movementAudio.playOnAwake = false;
+            movementAudio.loop = true;
+            movementAudio.clip = movingClip;
+        }
+        if (collisionAudio != null)
+        {
+            collisionAudio.playOnAwake = false;
+            collisionAudio.loop = false;
+            collisionAudio.clip = collideClip;
+        }
+    }
 
     private void Start()
     {
@@ -54,6 +78,13 @@ public sealed class PacStudentController : MonoBehaviour
             spriteRenderer.flipY = false;
         }
         transform.rotation = Quaternion.identity;
+        if (animator != null)
+        {
+            animator.enabled = true;
+            animator.Play("WalkRight", 0, 0f);
+            animator.Update(0f);
+            animator.speed = 0f;
+        }
         // Both inputs remain None: facing right does not start movement.
     }
 
@@ -62,24 +93,45 @@ public sealed class PacStudentController : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
-            if (keyboard.wKey.wasPressedThisFrame) lastInput = Key.W;
-            if (keyboard.aKey.wasPressedThisFrame) lastInput = Key.A;
-            if (keyboard.sKey.wasPressedThisFrame) lastInput = Key.S;
-            if (keyboard.dKey.wasPressedThisFrame) lastInput = Key.D;
+            if (keyboard.wKey.wasPressedThisFrame) RecordInput(Key.W);
+            if (keyboard.aKey.wasPressedThisFrame) RecordInput(Key.A);
+            if (keyboard.sKey.wasPressedThisFrame) RecordInput(Key.S);
+            if (keyboard.dKey.wasPressedThisFrame) RecordInput(Key.D);
         }
 
         AdvanceMovement(Time.deltaTime);
     }
 
+    private void RecordInput(Key input)
+    {
+        lastInput = input;
+        wallCollisionPlayed = false;
+    }
+
     private void AdvanceMovement(float deltaTime)
     {
         if (moveSpeed <= 0f)
+        {
+            SetMoving(false);
             return;
+        }
 
         // Carry unused frame time into the next tile, including on slow frames.
-        while (deltaTime > 0f)
+        while (true)
         {
             if (!isLerping && !TryStartMove(lastInput) && !TryStartMove(currentInput))
+            {
+                SetMoving(false);
+                if (lastInput != Key.None && !wallCollisionPlayed)
+                {
+                    if (collisionAudio != null && collideClip != null)
+                        collisionAudio.PlayOneShot(collideClip);
+                    wallCollisionPlayed = true;
+                }
+                return;
+            }
+
+            if (deltaTime <= 0f)
                 return;
 
             float timeToTarget = (1f - lerpProgress) / moveSpeed;
@@ -113,6 +165,7 @@ public sealed class PacStudentController : MonoBehaviour
         if (!levelGenerator.IsWalkable(next))
             return false;
 
+        bool directionChanged = currentInput != input;
         currentInput = input;
         targetGridPosition = next;
         lerpStart = GridToWorld(gridPosition);
@@ -120,9 +173,38 @@ public sealed class PacStudentController : MonoBehaviour
         lerpProgress = 0f;
         isLerping = true;
 
-        float angle = input == Key.W ? 90f : input == Key.A ? 180f : input == Key.S ? -90f : 0f;
-        transform.rotation = Quaternion.Euler(0f, 0f, angle);
+        if (directionChanged && animator != null)
+        {
+            string state = input == Key.W ? "WalkUp" : input == Key.A ? "WalkLeft"
+                : input == Key.S ? "WalkDown" : "WalkRight";
+            animator.Play(state, 0, 0f);
+        }
+        wallCollisionPlayed = false;
+        SetMoving(true);
         return true;
+    }
+
+    private void SetMoving(bool moving)
+    {
+        if (animator != null)
+            animator.speed = moving ? 1f : 0f;
+
+        if (isMoving == moving)
+            return;
+
+        isMoving = moving;
+        if (movementAudio != null)
+        {
+            if (moving && movingClip != null) movementAudio.Play();
+            else movementAudio.Stop();
+        }
+    }
+
+    private void OnDisable()
+    {
+        SetMoving(false);
+        if (collisionAudio != null)
+            collisionAudio.Stop();
     }
 
     private Vector3 GridToWorld(Vector2Int position)
