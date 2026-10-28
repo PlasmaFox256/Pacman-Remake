@@ -13,6 +13,7 @@ public sealed class LevelGenerator : MonoBehaviour
 
     private Tilemap tilemap;
     private BoundsInt bounds;
+    private Transform wallColliders;
 
     public void Initialize(Tilemap source, TileBase emptyTile, TileBase ghostWallTile)
     {
@@ -29,6 +30,43 @@ public sealed class LevelGenerator : MonoBehaviour
                     : tile == emptyTile ? Empty : Wall;
             }
         }
+
+        BuildWallColliders();
+    }
+
+    // Full-cell boxes keep collision geometry independent of the wall artwork.
+    // Merge horizontal runs so the maze needs fewer colliders.
+    private void BuildWallColliders()
+    {
+        if (wallColliders != null)
+            return;
+
+        wallColliders = new GameObject("Wall Colliders").transform;
+        wallColliders.SetParent(tilemap.transform, false);
+        Vector3 cellSize = tilemap.layoutGrid.cellSize;
+        for (int row = 0; row < levelMap.GetLength(0); row++)
+        {
+            for (int column = 0; column < levelMap.GetLength(1); column++)
+            {
+                if (levelMap[row, column] == Empty)
+                    continue;
+
+                int start = column;
+                while (column + 1 < levelMap.GetLength(1) && levelMap[row, column + 1] != Empty)
+                    column++;
+
+                BoxCollider2D wall = wallColliders.gameObject.AddComponent<BoxCollider2D>();
+                Vector3 first = GridToWorld(new Vector2Int(start, row));
+                Vector3 last = GridToWorld(new Vector2Int(column, row));
+                wall.offset = wallColliders.InverseTransformPoint((first + last) * 0.5f);
+                wall.size = new Vector2((column - start + 1) * cellSize.x, cellSize.y);
+            }
+        }
+    }
+
+    public bool IsWallCollider(Collider2D other)
+    {
+        return other != null && wallColliders != null && other.transform == wallColliders;
     }
 
     // Map coordinates are (column, row), with row zero at the top of the maze.

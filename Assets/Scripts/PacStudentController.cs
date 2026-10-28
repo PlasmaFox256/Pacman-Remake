@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Tilemaps;
 
+[RequireComponent(typeof(Rigidbody2D), typeof(CircleCollider2D))]
 public sealed class PacStudentController : MonoBehaviour
 {
     [SerializeField, Min(0.01f)] private float moveSpeed = 5f; // Tiles per second.
@@ -27,10 +28,16 @@ public sealed class PacStudentController : MonoBehaviour
     private Animator animator;
     private bool isMoving;
     private bool wallCollisionPlayed;
+    private CircleCollider2D playerCollider;
+    private readonly RaycastHit2D[] wallHits = new RaycastHit2D[32];
 
     private void Awake()
     {
         animator = GetComponent<Animator>();
+        // Physics only detects contacts. All movement and response use our lerp.
+        GetComponent<Rigidbody2D>().bodyType = RigidbodyType2D.Kinematic;
+        playerCollider = GetComponent<CircleCollider2D>();
+        playerCollider.isTrigger = true;
         if (movementAudio != null)
         {
             movementAudio.playOnAwake = false;
@@ -105,8 +112,9 @@ public sealed class PacStudentController : MonoBehaviour
 
     private void RecordInput(Key input)
     {
+        if (lastInput != input)
+            wallCollisionPlayed = false;
         lastInput = input;
-        wallCollisionPlayed = false;
     }
 
     private void AdvanceMovement(float deltaTime)
@@ -125,9 +133,10 @@ public sealed class PacStudentController : MonoBehaviour
                 SetMoving(false);
                 if (lastInput != Key.None && !wallCollisionPlayed)
                 {
-                    if (collisionAudio != null && collideClip != null)
-                        collisionAudio.PlayOneShot(collideClip);
-                    wallCollisionPlayed = true;
+                    Vector3 wallTarget = GridToWorld(gridPosition + InputDirection(lastInput));
+                    Vector2 direction = wallTarget - transform.position;
+                    if (TryFindWall(direction.normalized, direction.magnitude, out RaycastHit2D hit))
+                        PlayWallCollision(hit.point);
                 }
                 return;
             }
@@ -139,11 +148,12 @@ public sealed class PacStudentController : MonoBehaviour
             if (deltaTime < timeToTarget)
             {
                 lerpProgress += deltaTime * moveSpeed;
-                transform.position = Vector3.Lerp(lerpStart, lerpTarget, lerpProgress);
+                MoveToLerpPosition(Vector3.Lerp(lerpStart, lerpTarget, lerpProgress));
                 return;
             }
 
-            transform.position = lerpTarget;
+            if (!MoveToLerpPosition(lerpTarget))
+                return;
             gridPosition = targetGridPosition;
             isLerping = false;
             deltaTime -= timeToTarget;
@@ -152,15 +162,9 @@ public sealed class PacStudentController : MonoBehaviour
 
     private bool TryStartMove(Key input)
     {
-        Vector2Int direction;
-        switch (input)
-        {
-            case Key.W: direction = Vector2Int.down; break;
-            case Key.A: direction = Vector2Int.left; break;
-            case Key.S: direction = Vector2Int.up; break;
-            case Key.D: direction = Vector2Int.right; break;
-            default: return false;
-        }
+        Vector2Int direction = InputDirection(input);
+        if (direction == Vector2Int.zero)
+            return false;
 
         Vector2Int next = gridPosition + direction;
         if (!levelGenerator.IsWalkable(next))
@@ -183,6 +187,93 @@ public sealed class PacStudentController : MonoBehaviour
         wallCollisionPlayed = false;
         SetMoving(true);
         return true;
+    }
+
+    private static Vector2Int InputDirection(Key input)
+    {
+        switch (input)
+        {
+            case Key.W: return Vector2Int.down;
+            case Key.A: return Vector2Int.left;
+            case Key.S: return Vector2Int.up;
+            case Key.D: return Vector2Int.right;
+            default: return Vector2Int.zero;
+        }
+    }
+
+    private bool TryFindWall(Vector2 direction, float distance, out RaycastHit2D hit)
+    {
+        // Update transform-driven colliders before querying, even between tiles
+        // crossed in the same frame. Sweeping prevents tunnelling on slow frames.
+        Physics2D.SyncTransforms();
+        ContactFilter2D filter = ContactFilter2D.noFilter;
+        int count = playerCollider.Cast(direction, filter, wallHits, distance);
+        hit = default;
+        bool found = false;
+        for (int i = 0; i < count; i++)
+        {
+            if (!levelGenerator.IsWallCollider(wallHits[i].collider))
+                continue;
+            if (!found || wallHits[i].distance < hit.distance)
+            {
+                hit = wallHits[i];
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private bool MoveToLerpPosition(Vector3 position)
+    {
+        Vector2 delta = position - transform.position;
+        if (delta.sqrMagnitude > 0f && TryFindWall(delta.normalized, delta.magnitude, out RaycastHit2D hit))
+        {
+            StopAtWall(hit.point);
+            return false;
+        }
+        transform.position = position;
+        return true;
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (enabled && levelGenerator != null && levelGenerator.IsWallCollider(other))
+            StopAtWall(other.ClosestPoint(transform.position));
+    }
+
+    private void StopAtWall(Vector2 contactPoint)
+    {
+        transform.position = GridToWorld(gridPosition);
+        targetGridPosition = gridPosition;
+        lerpProgress = 0f;
+        isLerping = false;
+        SetMoving(false);
+        PlayWallCollision(contactPoint);
+    }
+
+    private void PlayWallCollision(Vector2 contactPoint)
+    {
+        if (wallCollisionPlayed)
+            return;
+        wallCollisionPlayed = true;
+        if (collisionAudio != null && collideClip != null)
+            collisionAudio.PlayOneShot(collideClip);
+        if (dustParticles == null)
+            return;
+
+        // Reuse the existing small dust effect, independently of running dust.
+        Vector3 position = new Vector3(contactPoint.x, contactPoint.y, transform.position.z);
+        ParticleSystem puff = Instantiate(dustParticles, position, Quaternion.identity);
+        puff.name = "Wall Collision Dust";
+        puff.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ParticleSystem.MainModule main = puff.main;
+        main.loop = false;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.stopAction = ParticleSystemStopAction.Destroy;
+        ParticleSystem.EmissionModule emission = puff.emission;
+        emission.enabled = false;
+        puff.Play();
+        puff.Emit(8);
     }
 
     private void SetMoving(bool moving)
