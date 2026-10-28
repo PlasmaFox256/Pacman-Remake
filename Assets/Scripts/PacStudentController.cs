@@ -13,6 +13,7 @@ public sealed class PacStudentController : MonoBehaviour
     [SerializeField] private AudioSource collisionAudio;
     [SerializeField] private AudioClip movingClip;
     [SerializeField] private AudioClip collideClip;
+    [SerializeField] private ParticleSystem dustParticles;
 
     private Key lastInput = Key.None;
     private Key currentInput = Key.None;
@@ -193,6 +194,11 @@ public sealed class PacStudentController : MonoBehaviour
             return;
 
         isMoving = moving;
+        if (dustParticles != null)
+        {
+            if (moving) dustParticles.Play();
+            else dustParticles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+        }
         if (movementAudio != null)
         {
             if (moving && movingClip != null) movementAudio.Play();
@@ -203,6 +209,8 @@ public sealed class PacStudentController : MonoBehaviour
     private void OnDisable()
     {
         SetMoving(false);
+        if (dustParticles != null)
+            dustParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         if (collisionAudio != null)
             collisionAudio.Stop();
     }
